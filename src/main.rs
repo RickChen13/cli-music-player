@@ -26,13 +26,9 @@ static mut VOLUME: f32 = 1.0;
 #[async_std::main]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    let play_event = Arc::new(|music_name: &str| {
-        println!("正在播放 {music_name}");
+    let done_event = Arc::new(|_music_name: &str| {
+        println!("播放结束");
     });
-    let done_event = Arc::new(|music_name: &str| {
-        println!("播放完成 {music_name}");
-    });
-    EVENTBUS.on("musicPlay", play_event);
     EVENTBUS.on("musicDone", done_event);
 
     let cli: Cli = Cli::parse();
@@ -79,83 +75,83 @@ async fn play(path: &str) {
     let mut music_player: Player = Player::new(sink);
 
     music_player.set_volume(unsafe { VOLUME });
-    music_player.init(path.to_owned());
+    if music_player.init(&path.to_owned()) {
+        let player_event = Arc::new(move |msg: &str| {
+            let items: Vec<&str> = msg.split(" ").collect();
+            match items[0] {
+                "play" => {
+                    music_player.play();
+                }
+                "pause" => {
+                    music_player.pause();
+                }
+                "stop" => {
+                    music_player.stop();
+                }
+                "volume" => unsafe {
+                    let volume = items[1].parse::<f32>();
+                    VOLUME = {
+                        match volume {
+                            Ok(num) => num,
+                            Err(_) => 1.0,
+                        }
+                    };
+                    music_player.set_volume(VOLUME);
+                },
+                "sleep_until_end" => {
+                    music_player.sleep_until_end();
+                }
+                _ => {}
+            };
+        });
+        let event_id = EVENTBUS.on("player_event", player_event);
+        EVENTBUS.emit("player_event", "play".to_string());
+        std::thread::spawn(move || {
+            EVENTBUS.emit("player_event", "sleep_until_end".to_owned());
+        });
 
-    let player_event = Arc::new(move |msg: &str| {
-        let items: Vec<&str> = msg.split(" ").collect();
-        match items[0] {
-            "play" => {
-                music_player.play();
-            }
-            "pause" => {
-                music_player.pause();
-            }
-            "stop" => {
-                music_player.stop();
-            }
-            "volume" => unsafe {
-                let volume = items[1].parse::<f32>();
-                VOLUME = {
-                    match volume {
-                        Ok(num) => num,
-                        Err(_) => 1.0,
-                    }
-                };
-                music_player.set_volume(VOLUME);
-            },
-            "sleep_until_end" => {
-                music_player.sleep_until_end();
-            }
-            _ => {}
-        };
-    });
-    let event_id = EVENTBUS.on("player_event", player_event);
-    EVENTBUS.emit("player_event", "play".to_string());
-    std::thread::spawn(move || {
-        EVENTBUS.emit("player_event", "sleep_until_end".to_owned());
-    });
-
-    loop {
-        let mut guess = String::new();
-        std::io::stdin()
-            .read_line(&mut guess)
-            .expect("Failed to read line");
-        let guess: &str = guess.trim();
-        let items: Vec<&str> = guess.split(" ").collect();
-        match items[0] {
-            "" => {
-                println!();
-                println!("输入 play 将播放歌曲");
-                println!("输入 pause 将暂停播放歌曲");
-                println!("输入 next 将播放下一首歌曲");
-                println!("输入 stop 将停止播放当前歌曲，并转跳到下一首歌曲");
-                println!("输入 volume [0-100] 设置播放音量");
-                println!();
-            }
-            "next" | "stop" => {
-                EVENTBUS.emit("player_event", "stop".to_owned());
-                EVENTBUS.off("player_event", &event_id);
-                break;
-            }
-            "volume" => {
-                let volume = items[1].parse::<f32>();
-                let v = {
-                    match volume {
-                        Ok(num) => num,
-                        Err(_) => continue,
-                    }
-                };
-                let set_volume: f32 = (v as f32) / 100.0;
-                EVENTBUS.emit("player_event", format!("volume {set_volume}"));
-            }
-            "pause" => {
-                EVENTBUS.emit("player_event", "pause".to_owned());
-            }
-            "play" => {
-                EVENTBUS.emit("player_event", "play".to_owned());
-            }
-            _ => {
-                println!("{}", items[0]);
+        loop {
+            let mut guess = String::new();
+            std::io::stdin()
+                .read_line(&mut guess)
+                .expect("Failed to read line");
+            let guess: &str = guess.trim();
+            let items: Vec<&str> = guess.split(" ").collect();
+            match items[0] {
+                "" => {
+                    println!();
+                    println!("输入 play 将播放歌曲");
+                    println!("输入 pause 将暂停播放歌曲");
+                    println!("输入 next 将播放下一首歌曲");
+                    println!("输入 stop 将停止播放当前歌曲，并转跳到下一首歌曲");
+                    println!("输入 volume [0-100] 设置播放音量");
+                    println!();
+                }
+                "next" | "stop" => {
+                    EVENTBUS.emit("player_event", "stop".to_owned());
+                    EVENTBUS.off("player_event", &event_id);
+                    break;
+                }
+                "volume" => {
+                    let volume = items[1].parse::<f32>();
+                    let v = {
+                        match volume {
+                            Ok(num) => num,
+                            Err(_) => continue,
+                        }
+                    };
+                    let set_volume: f32 = (v as f32) / 100.0;
+                    EVENTBUS.emit("player_event", format!("volume {set_volume}"));
+                }
+                "pause" => {
+                    EVENTBUS.emit("player_event", "pause".to_owned());
+                }
+                "play" => {
+                    EVENTBUS.emit("player_event", "play".to_owned());
+                }
+                _ => {
+                    println!("{}", items[0]);
+                }
             }
         }
     }
