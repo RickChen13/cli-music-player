@@ -1,6 +1,4 @@
-# cli-music-player
-
-cli Local music player
+# 跨平台命令行本地音乐播放器
 
 ## run
 
