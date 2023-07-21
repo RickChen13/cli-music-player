@@ -26,9 +26,13 @@ static mut VOLUME: f32 = 1.0;
 #[async_std::main]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    let done_event = Arc::new(|_music_name: &str| {
-        println!("播放结束");
+    let play_event = Arc::new(|music_name: &str| {
+        println!("正在播放 {music_name}");
     });
+    let done_event = Arc::new(|music_name: &str| {
+        println!("播放结束 {music_name}");
+    });
+    EVENTBUS.on("musicPlay", play_event);
     EVENTBUS.on("musicDone", done_event);
 
     let cli: Cli = Cli::parse();
@@ -110,22 +114,35 @@ async fn play(path: &str) {
             EVENTBUS.emit("player_event", "sleep_until_end".to_owned());
         });
 
+        // 读取命令行输入
+        let mut null_numner = 0;
+        let help = || {
+            println!();
+            println!("输入 play 将播放歌曲");
+            println!("输入 pause 将暂停播放歌曲");
+            println!("输入 next 将播放下一首歌曲");
+            println!("输入 stop 将停止播放当前歌曲，并转跳到下一首歌曲");
+            println!("输入 volume [0-100] 设置播放音量");
+            println!();
+        };
         loop {
             let mut guess = String::new();
             std::io::stdin()
                 .read_line(&mut guess)
-                .expect("Failed to read line");
+                .expect("读取命令行输入失败");
             let guess: &str = guess.trim();
             let items: Vec<&str> = guess.split(" ").collect();
             match items[0] {
                 "" => {
-                    println!();
-                    println!("输入 play 将播放歌曲");
-                    println!("输入 pause 将暂停播放歌曲");
-                    println!("输入 next 将播放下一首歌曲");
-                    println!("输入 stop 将停止播放当前歌曲，并转跳到下一首歌曲");
-                    println!("输入 volume [0-100] 设置播放音量");
-                    println!();
+                    null_numner += 1;
+                    if null_numner == 2 {
+                        EVENTBUS.emit("player_event", "stop".to_owned());
+                        EVENTBUS.off("player_event", &event_id);
+                        break;
+                    }
+                }
+                "help" => {
+                    help();
                 }
                 "next" | "stop" => {
                     EVENTBUS.emit("player_event", "stop".to_owned());

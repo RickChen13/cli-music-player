@@ -62,6 +62,6 @@ impl Player {
     pub fn sleep_until_end(&self) {
         self.sink.sleep_until_end();
         self.stop();
-        EVENTBUS.emit("musicDone", "".to_owned());
+        EVENTBUS.emit("musicDone", self.name.to_owned());
     }
 }
